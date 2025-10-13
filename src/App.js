@@ -399,7 +399,7 @@ const SmartNotebook = () => {
 
   return (
     <div className={'min-h-screen transition-colors duration-500 ' + (darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100')}>
-      <header className={'sticky top-0 z-50 backdrop-blur-xl border-b shadow-lg ' + (darkMode ? 'bg-gray-900/80 border-gray-800/50' : 'bg-white/80 border-gray-200/50')}>
+      <header className={'fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b shadow-lg ' + (darkMode ? 'bg-gray-900/95 border-gray-800/50' : 'bg-white/95 border-gray-200/50')}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -470,7 +470,7 @@ const SmartNotebook = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-48">
         {showStats && (
           <div className={'mb-8 p-6 rounded-2xl shadow-xl ' + (darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200')}>
             <h3 className={'text-lg font-semibold mb-6 flex items-center gap-2 ' + (darkMode ? 'text-white' : 'text-gray-900')}>
