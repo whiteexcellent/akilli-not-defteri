@@ -26,28 +26,25 @@ const SmartNotebook = () => {
   const [showHeader, setShowHeader] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // Header gizleme/gösterme kontrolü
+  // Header scroll kontrolü (style ile transform)
   useEffect(() => {
+    let lastScroll = 0;
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      
-      if (currentScrollY < 10) {
-        // En üstteyse her zaman göster
-        setShowHeader(true);
-      } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
-        // Aşağı kaydırıyorsa gizle
-        setShowHeader(false);
-      } else if (currentScrollY < lastScrollY) {
-        // Yukarı kaydırıyorsa göster
-        setShowHeader(true);
+      const currentScroll = window.pageYOffset;
+      const header = document.querySelector('header');
+      if (!header) return;
+      if (currentScroll <= 0) {
+        header.style.transform = 'translateY(0)';
+      } else if (currentScroll > lastScroll && currentScroll > 100) {
+        header.style.transform = 'translateY(-100%)';
+      } else {
+        header.style.transform = 'translateY(0)';
       }
-      
-      setLastScrollY(currentScrollY);
+      lastScroll = currentScroll;
     };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]); // 'syncing', 'synced', 'error'
+  }, []);
 
   // Firebase'den notları yükle
   useEffect(() => {
@@ -424,7 +421,10 @@ const SmartNotebook = () => {
 
   return (
     <div className={'min-h-screen transition-colors duration-500 ' + (darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100')}>
-      <header className={'fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b shadow-lg transition-transform duration-300 ' + (showHeader ? 'translate-y-0' : '-translate-y-full') + ' ' + (darkMode ? 'bg-gray-900/95 border-gray-800/50' : 'bg-white/95 border-gray-200/50')}>
+      <header
+        className={'fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b shadow-lg ' + (darkMode ? 'bg-gray-900/95 border-gray-800/50' : 'bg-white/95 border-gray-200/50')}
+        style={{ transition: 'transform 0.3s ease' }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
