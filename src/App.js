@@ -292,10 +292,14 @@ const SmartNotebook = () => {
   };
 
   const formatText = (text) => {
-    return text
+    // URL'leri tıklanabilir link yap
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    let formatted = text
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/\n/g, '<br/>');
+    formatted = formatted.replace(urlRegex, '<a href="$1" class="text-blue-500 underline" target="_blank" rel="noopener noreferrer">$1</a>');
+    return formatted;
   };
 
   const NoteCard = ({ note }) => {
