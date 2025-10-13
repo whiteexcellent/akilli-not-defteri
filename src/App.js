@@ -22,7 +22,32 @@ const SmartNotebook = () => {
   const [copiedId, setCopiedId] = useState(null);
   const [lockedNotes, setLockedNotes] = useState({});
   const [cloudSync, setCloudSync] = useState(true);
-  const [syncStatus, setSyncStatus] = useState('synced'); // 'syncing', 'synced', 'error'
+  const [syncStatus, setSyncStatus] = useState('synced');
+  const [showHeader, setShowHeader] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  // Header gizleme/gösterme kontrolü
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      if (currentScrollY < 10) {
+        // En üstteyse her zaman göster
+        setShowHeader(true);
+      } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        // Aşağı kaydırıyorsa gizle
+        setShowHeader(false);
+      } else if (currentScrollY < lastScrollY) {
+        // Yukarı kaydırıyorsa göster
+        setShowHeader(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]); // 'syncing', 'synced', 'error'
 
   // Firebase'den notları yükle
   useEffect(() => {
@@ -399,7 +424,7 @@ const SmartNotebook = () => {
 
   return (
     <div className={'min-h-screen transition-colors duration-500 ' + (darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100')}>
-      <header className={'fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b shadow-lg ' + (darkMode ? 'bg-gray-900/95 border-gray-800/50' : 'bg-white/95 border-gray-200/50')}>
+      <header className={'fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b shadow-lg transition-transform duration-300 ' + (showHeader ? 'translate-y-0' : '-translate-y-full') + ' ' + (darkMode ? 'bg-gray-900/95 border-gray-800/50' : 'bg-white/95 border-gray-200/50')}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -470,7 +495,7 @@ const SmartNotebook = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-48">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-40">
         {showStats && (
           <div className={'mb-8 p-6 rounded-2xl shadow-xl ' + (darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200')}>
             <h3 className={'text-lg font-semibold mb-6 flex items-center gap-2 ' + (darkMode ? 'text-white' : 'text-gray-900')}>
