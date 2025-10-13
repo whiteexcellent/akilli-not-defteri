@@ -292,22 +292,24 @@ const SmartNotebook = () => {
   };
 
   const formatText = (text) => {
+    let formatted = text;
+    
+    // Markdown formatting
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
     // URL'leri tıklanabilir link yap
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    let formatted = text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br/>');
-    formatted = formatted.replace(urlRegex, '<a href="$1" class="text-blue-500 underline" target="_blank" rel="noopener noreferrer">$1</a>');
+    formatted = formatted.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 underline font-medium">$1</a>');
+    
+    // Satır sonları
+    formatted = formatted.replace(/\n/g, '<br/>');
+    
     return formatted;
   };
 
   const NoteCard = ({ note }) => {
     const urls = note.urls || [];
-    let cleanText = note.content;
-    urls.forEach(url => {
-      cleanText = cleanText.replace(url, '');
-    });
     
     return (
       <div className={'group relative overflow-hidden rounded-2xl transition-all duration-500 shadow-lg hover:scale-[1.02] ' + (darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-850 hover:from-gray-750 hover:to-gray-800 border border-gray-700/50' : 'bg-gradient-to-br from-white to-gray-50 hover:shadow-2xl border border-gray-200/50')}>
@@ -331,31 +333,9 @@ const SmartNotebook = () => {
             </div>
           </div>
           
-          <div className={'mb-4 text-sm leading-relaxed space-y-2 ' + (darkMode ? 'text-gray-300' : 'text-gray-600')}>
-            <div className="line-clamp-3" dangerouslySetInnerHTML={{ __html: formatText(cleanText) }} />
+          <div className={'mb-4 text-sm leading-relaxed ' + (darkMode ? 'text-gray-300' : 'text-gray-600')}>
+            <div className="line-clamp-4" dangerouslySetInnerHTML={{ __html: formatText(note.content) }} />
           </div>
-
-          {urls.length > 0 && (
-            <div className={'mb-4 p-3 rounded-xl space-y-2 ' + (darkMode ? 'bg-gray-700/30 border border-gray-600/30' : 'bg-gray-50 border border-gray-200')}>
-              {urls.map((url, idx) => (
-                <a
-                  key={idx}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={'flex items-center gap-2 p-2 rounded-lg transition-all hover:scale-[1.02] group/link ' + (darkMode ? 'hover:bg-gray-600/50 text-blue-400 hover:text-blue-300' : 'hover:bg-white text-blue-600 hover:text-blue-700')}
-                >
-                  <div className={'p-1.5 rounded-lg group-hover/link:scale-110 transition-transform ' + (darkMode ? 'bg-blue-500/20' : 'bg-blue-100')}>
-                    <ExternalLink size={14} />
-                  </div>
-                  <span className="flex-1 text-xs font-medium truncate">
-                    {extractDomain(url)}
-                  </span>
-                  <div className={'text-xs ' + (darkMode ? 'text-gray-500' : 'text-gray-400')}>↗</div>
-                </a>
-              ))}
-            </div>
-          )}
           
           {note.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-4">
