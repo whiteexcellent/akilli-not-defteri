@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Edit2, Check, Share2, 
   LayoutGrid, List, Loader2, Users, Pin, X, 
   Moon, Sun, Copy, Archive, RefreshCw, Menu, 
-  Filter, User, Download, LogOut, Lock, Unlock, LogIn
+  Filter, User, Download, LogOut, Lock, Unlock, LogIn, Maximize2
 } from 'lucide-react';
 import { 
   collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, 
@@ -52,6 +52,9 @@ export default function App() {
   const [form, setForm] = useState({ title: '', content: '', color: 'default', tags: '' });
   const [isEditing, setIsEditing] = useState(null);
   
+  // YENİ: Seçili not (Pop-up için)
+  const [selectedNote, setSelectedNote] = useState(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('grid'); 
   const [activeTab, setActiveTab] = useState('notes'); 
@@ -79,12 +82,10 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setRoomData(data);
-        // Şifre varsa ve daha önce kilidi açılmamışsa kilitle (User olsa bile)
         if (data.password && !sessionStorage.getItem(`unlocked_${roomId}`)) {
           setIsLocked(true);
         }
       } else {
-        // Oda yoksa ve kullanıcı giriş yapmışsa odayı oluştur
         if (user) {
           setDoc(roomRef, { admin: user.uid, password: null, createdAt: serverTimestamp() });
         }
@@ -92,7 +93,6 @@ export default function App() {
     });
 
     let unsubNotes = () => {};
-    // Eğer kilitli değilse notları getir
     if (!isLocked) {
       const q = query(collection(db, "notes"), where("room", "==", roomId), orderBy("createdAt", "desc"));
       unsubNotes = onSnapshot(q, (snapshot) => {
@@ -170,7 +170,7 @@ export default function App() {
     }
   };
 
-  // --- UI: KİLİTLİ ODA EKRANI ---
+  // --- UI: KİLİTLİ ODA ---
   if (isLocked) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 p-4 transition-colors">
@@ -198,9 +198,55 @@ export default function App() {
     <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'} font-sans`}>
       {toast.show && <div className={`fixed top-5 right-5 z-[60] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-in ${toast.type==='error'?'bg-red-500 text-white':'bg-emerald-600 text-white'}`}>{toast.type==='error'?<X/>:<Check/>}<span className="font-medium">{toast.message}</span></div>}
 
+      {/* --- MODAL (POP-UP) --- */}
+      {selectedNote && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedNote(null)}>
+          <div 
+            className={`w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-2xl p-8 relative flex flex-col ${COLORS.find(c => c.id === selectedNote.color)?.bg || 'bg-white'} dark:bg-slate-900 dark:border dark:border-slate-700`}
+            onClick={(e) => e.stopPropagation()} // İçeriğe tıklayınca kapanmasın
+          >
+            <button onClick={() => setSelectedNote(null)} className="absolute top-4 right-4 p-2 rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 transition-colors">
+              <X size={24} />
+            </button>
+            
+            <div className="mb-6 pr-10">
+              <h2 className="text-3xl font-bold text-slate-900 dark:text-white break-words leading-tight">{selectedNote.title}</h2>
+              <div className="flex items-center gap-3 mt-3 text-sm opacity-60">
+                <span className="font-bold flex items-center gap-1"><User size={14}/> {selectedNote.author}</span>
+                <span>•</span>
+                <span>{selectedNote.createdAt?.toLocaleDateString()} {selectedNote.createdAt?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </div>
+            </div>
+
+            <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap text-lg leading-relaxed text-slate-700 dark:text-slate-300">
+              {formatContent(selectedNote.content)}
+            </div>
+
+            {selectedNote.tags && selectedNote.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-8 pt-6 border-t border-black/5 dark:border-white/5">
+                {selectedNote.tags.map((t, i) => (
+                  <span key={i} className="px-3 py-1 bg-black/5 dark:bg-white/10 rounded-lg text-sm font-medium">#{t}</span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 mt-6 pt-4">
+               <button onClick={() => {navigator.clipboard.writeText(selectedNote.content); showToast('Kopyalandı')}} className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl font-medium hover:bg-slate-200"><Copy size={18}/> Kopyala</button>
+               {user && !selectedNote.isDeleted && (
+                 <button onClick={() => {
+                   setSelectedNote(null);
+                   setIsEditing(selectedNote.id);
+                   setForm({title: selectedNote.title, content: selectedNote.content, color: selectedNote.color, tags: selectedNote.tags.join(', ')});
+                   document.getElementById('titleInput')?.focus();
+                 }} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-600 rounded-xl font-medium hover:bg-indigo-200"><Edit2 size={18}/> Düzenle</button>
+               )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
         <div className="p-6"><h1 className="text-2xl font-extrabold text-indigo-600 flex gap-2"><Edit2/> NoteMaster</h1></div>
-        
         <div className="px-4 mb-6">
           {user ? (
             <button onClick={()=>{setActiveTab('notes'); setSidebarOpen(false); document.getElementById('titleInput')?.focus()}} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg shadow-indigo-500/20"><Plus/> Yeni Not</button>
@@ -208,13 +254,11 @@ export default function App() {
             <button onClick={login} className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg"><LogIn size={18}/> Giriş Yap</button>
           )}
         </div>
-
         <nav className="flex-1 px-4 space-y-2">
           {[{id:'notes',icon:<List/>,label:'Notlar'},{id:'archive',icon:<Archive/>,label:'Arşiv'},{id:'trash',icon:<Trash2/>,label:'Çöp Kutusu'}].map(item=>(
             <button key={item.id} onClick={()=>{setActiveTab(item.id);setSidebarOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${activeTab===item.id?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600':'hover:bg-gray-100 dark:hover:bg-slate-800'}`}>{item.icon} {item.label}</button>
           ))}
         </nav>
-        
         <div className="p-4 border-t border-gray-200 dark:border-slate-800">
           {user ? (
             <>
@@ -230,10 +274,7 @@ export default function App() {
               <button onClick={()=>signOut(auth)} className="w-full flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 p-2 rounded-lg"><LogOut size={16}/> Çıkış Yap</button>
             </>
           ) : (
-             <div className="text-center text-gray-500 text-sm bg-gray-50 dark:bg-slate-800 p-3 rounded-xl">
-                <p>Misafir Modu 👀</p>
-                <p className="text-xs opacity-70">Düzenlemek için giriş yapın</p>
-             </div>
+             <div className="text-center text-gray-500 text-sm bg-gray-50 dark:bg-slate-800 p-3 rounded-xl"><p>Misafir Modu 👀</p><p className="text-xs opacity-70">Düzenlemek için giriş yapın</p></div>
           )}
         </div>
       </aside>
@@ -253,25 +294,18 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
-          {/* YENİ NOT ALANI - SADECE ÜYELERE GÖZÜKÜR */}
           {user && activeTab === 'notes' && (
             <div className={`max-w-3xl mx-auto mb-10 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-gray-200 dark:border-slate-800 overflow-hidden transition-all ${isEditing?'ring-2 ring-indigo-500':''}`}>
               <input id="titleInput" type="text" placeholder="Başlık" className="w-full p-5 text-lg font-bold bg-transparent outline-none border-b border-gray-100 dark:border-slate-800" value={form.title} onChange={e=>setForm({...form, title: e.target.value})}/>
               <textarea placeholder="Bir not yaz..." className="w-full p-5 h-32 bg-transparent outline-none resize-none" value={form.content} onChange={e=>setForm({...form, content: e.target.value})}></textarea>
               <input type="text" placeholder="#etiket1, #etiket2" className="w-full px-5 py-2 text-sm bg-transparent outline-none text-gray-500" value={form.tags} onChange={e=>setForm({...form, tags: e.target.value})}/>
               <div className="p-4 bg-gray-50 dark:bg-slate-800/50 flex flex-wrap justify-between items-center gap-4">
-                <div className="flex items-center gap-2">
-                  {COLORS.map(c=><button key={c.id} onClick={()=>setForm({...form, color:c.id})} className={`w-6 h-6 rounded-full border ${c.bg.split(' ')[0]} ${form.color===c.id?'ring-2 ring-indigo-500':''}`}/>)}
-                </div>
-                <div className="flex gap-2">
-                  {isEditing && <button onClick={()=>{setIsEditing(null);setForm({title:'',content:'',color:'default',tags:''})}} className="px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg">İptal</button>}
-                  <button onClick={handleSubmit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-indigo-700">{isEditing?'Güncelle':'Ekle'}</button>
-                </div>
+                <div className="flex items-center gap-2">{COLORS.map(c=><button key={c.id} onClick={()=>setForm({...form, color:c.id})} className={`w-6 h-6 rounded-full border ${c.bg.split(' ')[0]} ${form.color===c.id?'ring-2 ring-indigo-500':''}`}/>)}</div>
+                <div className="flex gap-2">{isEditing && <button onClick={()=>{setIsEditing(null);setForm({title:'',content:'',color:'default',tags:''})}} className="px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg">İptal</button>}<button onClick={handleSubmit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-indigo-700">{isEditing?'Güncelle':'Ekle'}</button></div>
               </div>
             </div>
           )}
 
-          {/* MİSAFİR UYARISI */}
           {!user && activeTab === 'notes' && (
             <div className="max-w-3xl mx-auto mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl flex items-center justify-between">
               <span className="text-blue-800 dark:text-blue-200 text-sm">👀 Notları izleme modundasınız. Düzenlemek için giriş yapın.</span>
@@ -286,20 +320,23 @@ export default function App() {
               {filteredNotes.map(note => {
                 const theme = COLORS.find(c => c.id === note.color) || COLORS[0];
                 return (
-                  <div key={note.id} className={`group relative rounded-2xl border transition-all hover:-translate-y-1 hover:shadow-xl flex flex-col ${theme.bg} ${theme.border} ${note.isPinned?'ring-2 ring-indigo-500':''} ${viewMode==='list'?'flex-row p-5 gap-6':'p-6'}`}>
+                  // 🔥 KART YAPISI - TIKLANABİLİR YAPILDI
+                  <div 
+                    key={note.id} 
+                    onClick={() => setSelectedNote(note)} // Tıklanınca Pop-up aç
+                    className={`group relative rounded-2xl border transition-all cursor-pointer hover:-translate-y-1 hover:shadow-xl flex flex-col ${theme.bg} ${theme.border} ${note.isPinned?'ring-2 ring-indigo-500':''} ${viewMode==='list'?'flex-row p-5 gap-6':'p-6'}`}
+                  >
                     {note.isPinned && activeTab==='notes' && <div className="absolute -top-3 -right-3 bg-indigo-600 text-white p-1.5 rounded-full shadow z-10"><Pin size={14} fill="currentColor"/></div>}
                     <div className="flex-1 w-full">
                       <h3 className="font-bold text-lg mb-2 break-words">{note.title}</h3>
+                      {/* Burada line-clamp-6 var, yani kartta kısaltılmış gösteriyoruz */}
                       <div className="text-sm opacity-80 mb-3 whitespace-pre-wrap break-words line-clamp-6">{formatContent(note.content)}</div>
                       {note.tags && note.tags.length > 0 && <div className="flex flex-wrap gap-1 mb-3">{note.tags.map((t,i)=><span key={i} className="text-xs bg-black/5 dark:bg-white/10 px-2 py-1 rounded">#{t}</span>)}</div>}
                     </div>
                     <div className={`mt-auto pt-4 flex justify-between items-center ${viewMode==='list'?'w-auto flex-col border-l pl-4':'border-t border-black/5 dark:border-white/5'}`}>
                       <div className="text-xs opacity-60 flex flex-col gap-1"><span className="font-bold flex items-center gap-1"><User size={10}/> {note.author}</span><span>{note.createdAt?.toLocaleDateString()}</span></div>
-                      <div className={`flex gap-1 ${viewMode==='grid'?'opacity-0 group-hover:opacity-100':''}`}>
-                        {/* HERKES GÖREBİLİR: İndir ve Kopyala */}
+                      <div className={`flex gap-1 ${viewMode==='grid'?'opacity-0 group-hover:opacity-100':''}`} onClick={(e) => e.stopPropagation() /* Butonlara basınca pop-up açılmasın */}>
                         <button onClick={()=>{const e=document.createElement("a");e.href=URL.createObjectURL(new Blob([`${note.title}\n${note.content}`],{type:'text/plain'}));e.download=`${note.title}.txt`;e.click()}} className="p-2 hover:bg-slate-200 rounded text-slate-500"><Download size={16}/></button>
-                        
-                        {/* SADECE ÜYELER */}
                         {user && (
                           <>
                             {activeTab === 'trash' ? (
