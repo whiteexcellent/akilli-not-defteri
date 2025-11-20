@@ -1,635 +1,333 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Moon, Sun, Link2, Trash2, Edit2, Copy, Download, Upload, Lock, Unlock, X, Check, TrendingUp, ExternalLink, Sparkles, Cloud, CloudOff } from 'lucide-react';
+import { 
+  Plus, Search, Trash2, Edit2, Check, Share2, 
+  LayoutGrid, List, Loader2, Users, Pin, X, 
+  Moon, Sun, Copy, Archive, RefreshCw, Menu, 
+  Filter, User
+} from 'lucide-react';
+import { 
+  collection, addDoc, onSnapshot, 
+  doc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp 
+} from 'firebase/firestore';
+import { db } from './firebase';
 
-// Firebase yapılandırması - KENDİ BİLGİLERİNİZLE DEĞİŞTİRİN
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDZB_8rf6-R02_4Popkt-APSNdT2-s2UTo",
-  authDomain: "akilli-not-defteri-ea627.firebaseapp.com",
-  projectId: "akilli-not-defteri-ea627",
-  storageBucket: "akilli-not-defteri-ea627.firebasestorage.app",
-  messagingSenderId: "628676298507",
-  appId: "G-5BEDBY1KYQ"
+// --- RENK PALETLERİ ---
+const COLORS = [
+  { id: 'default', name: 'Varsayılan', bg: 'bg-white dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700' },
+  { id: 'red', name: 'Kırmızı', bg: 'bg-red-50 dark:bg-red-900', border: 'border-red-200 dark:border-red-800' },
+  { id: 'orange', name: 'Turuncu', bg: 'bg-yellow-50 dark:bg-yellow-900', border: 'border-yellow-200 dark:border-yellow-800' },
+  { id: 'green', name: 'Yeşil', bg: 'bg-green-50 dark:bg-green-900', border: 'border-green-200 dark:border-green-800' },
+  { id: 'blue', name: 'Mavi', bg: 'bg-blue-50 dark:bg-blue-900', border: 'border-blue-200 dark:border-blue-800' },
+  { id: 'indigo', name: 'Mor', bg: 'bg-indigo-50 dark:bg-indigo-900', border: 'border-indigo-200 dark:border-indigo-800' },
+];
+
+// Oda ID bulucu
+const getRoomId = () => {
+  const params = new URLSearchParams(window.location.search);
+  let room = params.get('room');
+  if (!room) {
+    room = Math.random().toString(36).substring(2, 9);
+    window.history.replaceState(null, '', `?room=${room}`);
+  }
+  return room;
 };
 
-const SmartNotebook = () => {
+export default function App() {
+  // --- STATE ---
   const [notes, setNotes] = useState([]);
-  const [darkMode, setDarkMode] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingNote, setEditingNote] = useState(null);
-  const [newNote, setNewNote] = useState({ title: '', content: '', tags: '' });
-  const [showStats, setShowStats] = useState(false);
-  const [copiedId, setCopiedId] = useState(null);
-  const [lockedNotes, setLockedNotes] = useState({});
-  const [cloudSync, setCloudSync] = useState(true);
-  const [syncStatus, setSyncStatus] = useState('synced');
-  const [showHeader, setShowHeader] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  const [form, setForm] = useState({ title: '', content: '', color: 'default' });
+  const [isEditing, setIsEditing] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('grid'); 
+  const [activeTab, setActiveTab] = useState('notes'); // notes | archive | trash
+  const [loading, setLoading] = useState(true);
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
+  const [username, setUsername] = useState(localStorage.getItem('username') || '');
+  const [showNameModal, setShowNameModal] = useState(!localStorage.getItem('username'));
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [roomId] = useState(getRoomId());
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // Header scroll kontrolü (style ile transform)
+  // --- ETKİLER ---
   useEffect(() => {
-    let lastScroll = 0;
-    const handleScroll = () => {
-      const currentScroll = window.pageYOffset;
-      const header = document.querySelector('header');
-      if (!header) return;
-      if (currentScroll <= 0) {
-        header.style.transform = 'translateY(0)';
-      } else if (currentScroll > lastScroll && currentScroll > 100) {
-        header.style.transform = 'translateY(-100%)';
-      } else {
-        header.style.transform = 'translateY(0)';
-      }
-      lastScroll = currentScroll;
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Firebase'den notları yükle
-  useEffect(() => {
-    loadNotesFromFirebase();
-    loadFromLocalStorage();
-  }, []);
-
-  // Firebase'e kaydet
-  useEffect(() => {
-    if (notes.length > 0 && cloudSync) {
-      saveNotesToFirebase();
-    }
-    saveToLocalStorage();
-  }, [notes, darkMode, cloudSync]);
-
-  const loadFromLocalStorage = () => {
-    try {
-      const savedNotes = localStorage.getItem('smartNotes');
-      const savedTheme = localStorage.getItem('darkMode');
-      const savedLocked = localStorage.getItem('lockedNotes');
-      
-      if (savedNotes) setNotes(JSON.parse(savedNotes));
-      if (savedTheme) setDarkMode(JSON.parse(savedTheme));
-      if (savedLocked) setLockedNotes(JSON.parse(savedLocked));
-    } catch (error) {
-      console.error('LocalStorage yükleme hatası:', error);
-    }
-  };
-
-  const saveToLocalStorage = () => {
-    try {
-      localStorage.setItem('smartNotes', JSON.stringify(notes));
-      localStorage.setItem('darkMode', JSON.stringify(darkMode));
-      localStorage.setItem('lockedNotes', JSON.stringify(lockedNotes));
-    } catch (error) {
-      console.error('LocalStorage kaydetme hatası:', error);
-    }
-  };
-
-  const loadNotesFromFirebase = async () => {
-    if (!cloudSync) return;
-    
-    try {
-      setSyncStatus('syncing');
-      const response = await fetch(
-        `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/notes`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.documents) {
-          const loadedNotes = data.documents.map(doc => {
-            const fields = doc.fields;
-            return {
-              id: fields.id?.stringValue || '',
-              title: fields.title?.stringValue || '',
-              content: fields.content?.stringValue || '',
-              tags: fields.tags?.arrayValue?.values?.map(v => v.stringValue) || [],
-              date: fields.date?.stringValue || new Date().toISOString(),
-              shareId: fields.shareId?.stringValue || '',
-              urls: fields.urls?.arrayValue?.values?.map(v => v.stringValue) || [],
-              hasURL: fields.hasURL?.booleanValue || false
-            };
-          });
-          setNotes(loadedNotes);
-        }
-        setSyncStatus('synced');
-      }
-    } catch (error) {
-      console.error('Firebase yükleme hatası:', error);
-      setSyncStatus('error');
-    }
-  };
-
-  const saveNotesToFirebase = async () => {
-    if (!cloudSync) return;
-    
-    try {
-      setSyncStatus('syncing');
-      
-      for (const note of notes) {
-        const firestoreDoc = {
-          fields: {
-            id: { stringValue: note.id },
-            title: { stringValue: note.title },
-            content: { stringValue: note.content },
-            tags: { 
-              arrayValue: { 
-                values: note.tags.map(tag => ({ stringValue: tag }))
-              }
-            },
-            date: { stringValue: note.date },
-            shareId: { stringValue: note.shareId },
-            urls: {
-              arrayValue: {
-                values: note.urls.map(url => ({ stringValue: url }))
-              }
-            },
-            hasURL: { booleanValue: note.hasURL }
-          }
-        };
-
-        await fetch(
-          `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/notes/${note.id}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(firestoreDoc)
-          }
-        );
-      }
-      
-      setSyncStatus('synced');
-    } catch (error) {
-      console.error('Firebase kaydetme hatası:', error);
-      setSyncStatus('error');
-    }
-  };
-
-  const generateId = () => Math.random().toString(36).substr(2, 9);
-
-  const detectURL = (text) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.match(urlRegex) || [];
-  };
-
-  const extractDomain = (url) => {
-    try {
-      const domain = new URL(url).hostname.replace('www.', '');
-      return domain;
-    } catch {
-      return url;
-    }
-  };
-
-  const extractTags = (text) => {
-    const tagRegex = /#(\w+)/g;
-    const matches = text.match(tagRegex);
-    return matches ? matches.map(tag => tag.slice(1)) : [];
-  };
-
-  const addNote = () => {
-    if (!newNote.content.trim()) return;
-    
-    const urls = detectURL(newNote.content);
-    const note = {
-      id: generateId(),
-      title: newNote.title || newNote.content.split('\n')[0].slice(0, 50),
-      content: newNote.content,
-      tags: extractTags(newNote.content + ' ' + newNote.tags),
-      date: new Date().toISOString(),
-      shareId: generateId(),
-      urls: urls,
-      hasURL: urls.length > 0
-    };
-    
-    setNotes([note, ...notes]);
-    setNewNote({ title: '', content: '', tags: '' });
-    setIsAdding(false);
-  };
-
-  const updateNote = () => {
-    const urls = detectURL(editingNote.content);
-    setNotes(notes.map(n => n.id === editingNote.id ? {
-      ...editingNote,
-      tags: extractTags(editingNote.content + ' ' + editingNote.tags),
-      urls: urls,
-      hasURL: urls.length > 0
-    } : n));
-    setEditingNote(null);
-  };
-
-  const deleteNote = async (id) => {
-    setNotes(notes.filter(n => n.id !== id));
-    const newLocked = { ...lockedNotes };
-    delete newLocked[id];
-    setLockedNotes(newLocked);
-
-    // Firebase'den sil
-    if (cloudSync) {
-      try {
-        await fetch(
-          `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/notes/${id}`,
-          { method: 'DELETE' }
-        );
-      } catch (error) {
-        console.error('Firebase silme hatası:', error);
-      }
-    }
-  };
-
-  const copyToClipboard = (text, id) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const shareNote = (note) => {
-    const shareUrl = window.location.origin + '/note/' + note.shareId;
-    copyToClipboard(shareUrl, note.id);
-  };
-
-  const exportNotes = () => {
-    const dataStr = JSON.stringify(notes, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'notlar-' + new Date().toISOString().split('T')[0] + '.json';
-    link.click();
-  };
-
-  const importNotes = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const imported = JSON.parse(event.target.result);
-        setNotes([...imported, ...notes]);
-      } catch (error) {
-        alert('Dosya okunamadı!');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const toggleLock = (id) => {
-    if (lockedNotes[id]) {
-      const password = prompt('Şifre girin:');
-      if (password === lockedNotes[id]) {
-        const newLocked = { ...lockedNotes };
-        delete newLocked[id];
-        setLockedNotes(newLocked);
-      } else {
-        alert('Yanlış şifre!');
-      }
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
     } else {
-      const password = prompt('Not için şifre belirleyin:');
-      if (password) {
-        setLockedNotes({ ...lockedNotes, [id]: password });
-      }
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
+    // Veritabanı Dinleyici
+    const q = query(
+      collection(db, "notes"), 
+      where("room", "==", roomId),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+      }));
+      setNotes(notesData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Hata:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [roomId]);
+
+  // --- FONKSİYONLAR ---
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ ...toast, show: false }), 3000);
+  };
+
+  const saveUsername = (e) => {
+    e.preventDefault();
+    const name = e.target.elements.name.value.trim();
+    if (name) {
+      localStorage.setItem('username', name);
+      setUsername(name);
+      setShowNameModal(false);
+      showToast(`Hoş geldin, ${name}! 👋`);
     }
   };
 
-  const filteredNotes = notes.filter(note => {
-    if (lockedNotes[note.id]) return false;
-    const query = searchQuery.toLowerCase();
-    return note.title.toLowerCase().includes(query) ||
-           note.content.toLowerCase().includes(query) ||
-           note.tags.some(tag => tag.toLowerCase().includes(query));
-  });
-
-  const stats = {
-    total: notes.length,
-    withLinks: notes.filter(n => n.hasURL).length,
-    tags: [...new Set(notes.flatMap(n => n.tags))].slice(0, 5),
-    locked: Object.keys(lockedNotes).length
+  const handleSubmit = async () => {
+    if (!form.title.trim() && !form.content.trim()) return;
+    try {
+      if (isEditing) {
+        await updateDoc(doc(db, "notes", isEditing), { ...form, updatedAt: serverTimestamp(), lastEditor: username });
+        showToast("Not güncellendi");
+        setIsEditing(null);
+      } else {
+        await addDoc(collection(db, "notes"), {
+          ...form,
+          room: roomId,
+          author: username || 'Misafir',
+          isPinned: false,
+          isArchived: false,
+          isDeleted: false,
+          createdAt: serverTimestamp()
+        });
+        showToast("Not eklendi");
+      }
+      setForm({ title: '', content: '', color: 'default' });
+    } catch (error) {
+      showToast("Hata oluştu", "error");
+    }
   };
 
-  const formatText = (text) => {
-    let formatted = text;
-    
-    // Markdown formatting
-    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
-    // URL'leri tıklanabilir link yap
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    formatted = formatted.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 underline font-medium">$1</a>');
-    
-    // Satır sonları
-    formatted = formatted.replace(/\n/g, '<br/>');
-    
-    return formatted;
+  const updateStatus = async (id, field, value) => {
+    await updateDoc(doc(db, "notes", id), { [field]: value });
+    showToast("Durum güncellendi");
   };
 
-  const NoteCard = ({ note }) => {
-    const urls = note.urls || [];
-    
-    return (
-      <div className={'group relative overflow-hidden rounded-2xl transition-all duration-500 shadow-lg hover:scale-[1.02] ' + (darkMode ? 'bg-gradient-to-br from-gray-800 to-gray-850 hover:from-gray-750 hover:to-gray-800 border border-gray-700/50' : 'bg-gradient-to-br from-white to-gray-50 hover:shadow-2xl border border-gray-200/50')}>
-        <div className={'absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ' + (darkMode ? 'bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10' : 'bg-gradient-to-r from-indigo-100/20 via-purple-100/20 to-pink-100/20')} />
-        
-        <div className="relative p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex-1">
-              <h3 className={'font-bold text-xl mb-2 line-clamp-2 leading-tight ' + (darkMode ? 'text-white' : 'text-gray-900')}>
-                {note.title}
-              </h3>
-              {urls.length > 0 && (
-                <div className={'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ' + (darkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-700')}>
-                  <Link2 size={12} />
-                  {urls.length} Bağlantı
-                </div>
-              )}
-            </div>
-            <div className={'p-2 rounded-xl ' + (darkMode ? 'bg-gray-700/50' : 'bg-gray-100')}>
-              <Sparkles size={18} className={darkMode ? 'text-indigo-400' : 'text-indigo-600'} />
-            </div>
-          </div>
-          
-          <div className={'mb-4 text-sm leading-relaxed ' + (darkMode ? 'text-gray-300' : 'text-gray-600')}>
-            <div className="line-clamp-4" dangerouslySetInnerHTML={{ __html: formatText(note.content) }} />
-          </div>
-          
-          {note.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {note.tags.map(tag => (
-                <span
-                  key={tag}
-                  className={'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ' + (darkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200')}
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
-          
-          <div className={'text-xs mb-4 flex items-center gap-2 ' + (darkMode ? 'text-gray-500' : 'text-gray-400')}>
-            <div className={'w-1.5 h-1.5 rounded-full ' + (darkMode ? 'bg-gray-600' : 'bg-gray-300')} />
-            {new Date(note.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </div>
-          
-          <div className="grid grid-cols-5 gap-2">
-            <button
-              onClick={() => shareNote(note)}
-              className={'py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1 ' + (darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 active:scale-95' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95')}
-              title="Paylaş"
-            >
-              {copiedId === note.id ? <Check size={14} /> : <Link2 size={14} />}
-            </button>
-            <button
-              onClick={() => copyToClipboard(note.content, 'copy-' + note.id)}
-              className={'py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1 ' + (darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 active:scale-95' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95')}
-              title="Kopyala"
-            >
-              {copiedId === ('copy-' + note.id) ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-            <button
-              onClick={() => toggleLock(note.id)}
-              className={'py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-center ' + (darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600 active:scale-95' : 'bg-gray-100 text-yellow-600 hover:bg-gray-200 active:scale-95')}
-              title="Kilitle"
-            >
-              {lockedNotes[note.id] ? <Lock size={14} /> : <Unlock size={14} />}
-            </button>
-            <button
-              onClick={() => setEditingNote(note)}
-              className={'py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-center ' + (darkMode ? 'bg-gray-700 text-blue-400 hover:bg-gray-600 active:scale-95' : 'bg-gray-100 text-blue-600 hover:bg-gray-200 active:scale-95')}
-              title="Düzenle"
-            >
-              <Edit2 size={14} />
-            </button>
-            <button
-              onClick={() => deleteNote(note.id)}
-              className="py-2.5 bg-red-500/10 text-red-500 rounded-xl text-xs font-medium hover:bg-red-500/20 transition-all active:scale-95 flex items-center justify-center"
-              title="Sil"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  const permanentDelete = async (id) => {
+    if (window.confirm('Bu notu tamamen silmek istiyor musun?')) {
+      await deleteDoc(doc(db, "notes", id));
+      showToast("Not kalıcı olarak silindi", "error");
+    }
   };
 
+  const filteredNotes = notes.filter(n => {
+    const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    if (activeTab === 'trash') return n.isDeleted;
+    if (n.isDeleted) return false;
+    if (activeTab === 'archive') return n.isArchived;
+    return !n.isArchived;
+  }).sort((a, b) => (b.isPinned - a.isPinned)); // Pinliler üstte
+
+  // --- ARAYÜZ ---
   return (
-    <div className={'min-h-screen transition-colors duration-500 ' + (darkMode ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100')}>
-      <header
-        className={'fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b shadow-lg ' + (darkMode ? 'bg-gray-900/95 border-gray-800/50' : 'bg-white/95 border-gray-200/50')}
-        style={{ transition: 'transform 0.3s ease' }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={'p-2 rounded-xl shadow-lg ' + (darkMode ? 'bg-gradient-to-br from-indigo-600 to-purple-600' : 'bg-gradient-to-br from-indigo-500 to-purple-500')}>
-                <Sparkles size={24} className="text-white" />
-              </div>
-              <div>
-                <h1 className={'text-2xl font-bold ' + (darkMode ? 'text-white' : 'text-gray-900')}>
-                  Akıllı Not Defteri
-                </h1>
-                <p className={'text-xs ' + (darkMode ? 'text-gray-400' : 'text-gray-500')}>
-                  Notlarınızı düzenleyin, paylaşın
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCloudSync(!cloudSync)}
-                className={'p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ' + (cloudSync ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-200 text-gray-600'))}
-                title={cloudSync ? 'Bulut Senkronizasyonu Açık' : 'Bulut Senkronizasyonu Kapalı'}
-              >
-                {cloudSync ? <Cloud size={20} /> : <CloudOff size={20} />}
-              </button>
-              <button onClick={() => setShowStats(!showStats)} className={'p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ' + (darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
-                <TrendingUp size={20} />
-              </button>
-              <button onClick={() => document.getElementById('import').click()} className={'p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ' + (darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
-                <Upload size={20} />
-              </button>
-              <input id="import" type="file" accept=".json" onChange={importNotes} className="hidden" />
-              <button onClick={exportNotes} className={'p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ' + (darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
-                <Download size={20} />
-              </button>
-              <button onClick={() => setDarkMode(!darkMode)} className={'p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg ' + (darkMode ? 'bg-gradient-to-br from-yellow-600 to-orange-600 text-white' : 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white')}>
-                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
+    <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-gray-50 text-gray-800'}`}>
+      
+      {/* TOAST MESAJI */}
+      {toast.show && (
+        <div className={`fixed top-5 right-5 z-50 px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-slide-in ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
+          {toast.type === 'error' ? <X size={20} /> : <Check size={20} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* İSİM MODALI */}
+      {showNameModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-2 text-indigo-600">Hoş Geldin!</h2>
+            <p className="text-gray-500 mb-6">Notlara ismini eklemek için adını gir.</p>
+            <form onSubmit={saveUsername}>
+              <input name="name" type="text" placeholder="Adın Soyadın..." className="w-full p-3 rounded-lg border dark:bg-gray-700 dark:border-gray-600 mb-4 focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
+              <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold">Başla</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- SIDEBAR --- */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
+        <div className="p-6 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2"><Edit2 /> NoteMaster</h1>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden"><X /></button>
+        </div>
+
+        <div className="px-4 mb-6">
+          <button onClick={() => {setActiveTab('notes'); setSidebarOpen(false); document.getElementById('noteInput')?.focus()}} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg">
+            <Plus size={20} /> Yeni Not
+          </button>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-2">
+          <button onClick={() => {setActiveTab('notes'); setSidebarOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium ${activeTab === 'notes' ? 'bg-indigo-50 dark:bg-indigo-900 text-indigo-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+            <List size={20} /> Notlar
+          </button>
+          <button onClick={() => {setActiveTab('archive'); setSidebarOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium ${activeTab === 'archive' ? 'bg-indigo-50 dark:bg-indigo-900 text-indigo-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+            <Archive size={20} /> Arşiv
+          </button>
+          <button onClick={() => {setActiveTab('trash'); setSidebarOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium ${activeTab === 'trash' ? 'bg-indigo-50 dark:bg-indigo-900 text-indigo-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+            <Trash2 size={20} /> Çöp Kutusu
+          </button>
+        </nav>
+
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
+            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold">{username.charAt(0).toUpperCase()}</div>
+            <div className="overflow-hidden">
+              <p className="font-bold truncate text-sm">{username}</p>
+              <p className="text-xs text-green-500 flex items-center gap-1">● Çevrimiçi</p>
             </div>
           </div>
+        </div>
+      </aside>
 
-          <div className="flex gap-3">
-            <div className="flex-1 relative group">
-              <Search className={'absolute left-4 top-1/2 transform -translate-y-1/2 transition-colors ' + (darkMode ? 'text-gray-500 group-hover:text-indigo-400' : 'text-gray-400 group-hover:text-indigo-600')} size={20} />
-              <input
-                type="text"
-                placeholder="Notlarda ara..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className={'w-full pl-12 pr-4 py-3 rounded-xl border-2 transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/20 ' + (darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-indigo-500' : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-500')}
-              />
-            </div>
-            <button onClick={() => setIsAdding(true)} className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center gap-2 font-semibold shadow-lg hover:scale-105 active:scale-95">
-              <Plus size={20} />
-              <span className="hidden sm:inline">Yeni Not</span>
+      {/* --- ANA İÇERİK --- */}
+      <main className="flex-1 flex flex-col w-full md:ml-64 h-full overflow-hidden">
+        {/* Header */}
+        <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 bg-white/90 dark:bg-gray-900/90 backdrop-blur z-20">
+          <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2"><Menu /></button>
+          
+          <div className="relative hidden sm:block w-64">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+            <input 
+              type="text" placeholder="Ara..." 
+              className="pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              {viewMode === 'grid' ? <List size={20} /> : <LayoutGrid size={20} />}
+            </button>
+            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <button onClick={() => {navigator.clipboard.writeText(window.location.href); showToast('Link kopyalandı!')}} className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+              <Share2 size={16} /> Paylaş
             </button>
           </div>
+        </header>
 
-          {syncStatus === 'syncing' && (
-            <div className={'mt-3 text-xs flex items-center gap-2 ' + (darkMode ? 'text-blue-400' : 'text-blue-600')}>
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
-              Senkronize ediliyor...
-            </div>
-          )}
-          {syncStatus === 'error' && (
-            <div className={'mt-3 text-xs flex items-center gap-2 ' + (darkMode ? 'text-red-400' : 'text-red-600')}>
-              ⚠️ Senkronizasyon hatası
-            </div>
-          )}
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-40">
-        {showStats && (
-          <div className={'mb-8 p-6 rounded-2xl shadow-xl ' + (darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200')}>
-            <h3 className={'text-lg font-semibold mb-6 flex items-center gap-2 ' + (darkMode ? 'text-white' : 'text-gray-900')}>
-              <TrendingUp size={20} />
-              İstatistikler
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className={'p-5 rounded-xl ' + (darkMode ? 'bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/20' : 'bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200')}>
-                <div className={'text-3xl font-bold mb-1 ' + (darkMode ? 'text-indigo-400' : 'text-indigo-600')}>{stats.total}</div>
-                <div className={'text-sm ' + (darkMode ? 'text-gray-400' : 'text-gray-600')}>Toplam Not</div>
-              </div>
-              <div className={'p-5 rounded-xl ' + (darkMode ? 'bg-gradient-to-br from-blue-600/20 to-cyan-600/20 border border-blue-500/20' : 'bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200')}>
-                <div className={'text-3xl font-bold mb-1 ' + (darkMode ? 'text-blue-400' : 'text-blue-600')}>{stats.withLinks}</div>
-                <div className={'text-sm ' + (darkMode ? 'text-gray-400' : 'text-gray-600')}>Bağlantılı</div>
-              </div>
-              <div className={'p-5 rounded-xl ' + (darkMode ? 'bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-purple-500/20' : 'bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200')}>
-                <div className={'text-3xl font-bold mb-1 ' + (darkMode ? 'text-purple-400' : 'text-purple-600')}>{stats.locked}</div>
-                <div className={'text-sm ' + (darkMode ? 'text-gray-400' : 'text-gray-600')}>Kilitli</div>
-              </div>
-              <div className={'p-5 rounded-xl ' + (darkMode ? 'bg-gradient-to-br from-green-600/20 to-emerald-600/20 border border-green-500/20' : 'bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200')}>
-                <div className={'text-3xl font-bold mb-1 ' + (darkMode ? 'text-green-400' : 'text-green-600')}>{stats.tags.length}</div>
-                <div className={'text-sm ' + (darkMode ? 'text-gray-400' : 'text-gray-600')}>Etiket Türü</div>
-              </div>
-            </div>
-            {stats.tags.length > 0 && (
-              <div className="mt-6">
-                <div className={'text-sm font-medium mb-3 ' + (darkMode ? 'text-gray-300' : 'text-gray-700')}>Popüler Etiketler:</div>
-                <div className="flex flex-wrap gap-2">
-                  {stats.tags.map(tag => (
-                    <span key={tag} className={'px-4 py-2 rounded-xl text-sm font-medium ' + (darkMode ? 'bg-gray-700 text-indigo-400 border border-gray-600' : 'bg-indigo-100 text-indigo-700 border border-indigo-200')}>
-                      #{tag}
-                    </span>
+        {/* Scroll Alanı */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          
+          {/* Not Ekleme Formu (Sadece Notlar sekmesinde) */}
+          {activeTab === 'notes' && (
+            <div className="max-w-2xl mx-auto mb-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <input 
+                type="text" placeholder="Başlık..." 
+                className="w-full p-4 text-lg font-bold bg-transparent outline-none border-b border-gray-100 dark:border-gray-700"
+                value={form.title} onChange={(e) => setForm({...form, title: e.target.value})}
+              />
+              <textarea 
+                id="noteInput" placeholder="Bir not yazın..." 
+                className="w-full p-4 h-24 bg-transparent outline-none resize-none"
+                value={form.content} onChange={(e) => setForm({...form, content: e.target.value})}
+              ></textarea>
+              <div className="p-3 bg-gray-50 dark:bg-gray-900 flex justify-between items-center">
+                <div className="flex gap-2">
+                  {COLORS.map(c => (
+                    <button key={c.id} onClick={() => setForm({...form, color: c.id})} className={`w-6 h-6 rounded-full border ${c.bg.split(' ')[0]} ${form.color === c.id ? 'ring-2 ring-indigo-500' : ''}`} />
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {(isAdding || editingNote) && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className={'w-full max-w-2xl rounded-2xl shadow-2xl p-6 ' + (darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200')}>
-              <div className="flex justify-between items-center mb-6">
-                <h3 className={'text-2xl font-bold flex items-center gap-2 ' + (darkMode ? 'text-white' : 'text-gray-900')}>
-                  {editingNote ? <Edit2 size={24} /> : <Plus size={24} />}
-                  {editingNote ? 'Notu Düzenle' : 'Yeni Not'}
-                </h3>
-                <button onClick={() => { setIsAdding(false); setEditingNote(null); }} className={'p-2 rounded-xl transition-all hover:scale-110 active:scale-95 ' + (darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}>
-                  <X size={24} />
-                </button>
-              </div>
-              
-              <input
-                type="text"
-                placeholder="Başlık (opsiyonel)"
-                value={editingNote ? editingNote.title : newNote.title}
-                onChange={(e) => editingNote ? setEditingNote({ ...editingNote, title: e.target.value }) : setNewNote({ ...newNote, title: e.target.value })}
-                className={'w-full px-4 py-3 mb-4 rounded-xl border-2 transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/20 ' + (darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-indigo-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500 focus:border-indigo-500')}
-              />
-              
-              <textarea
-                placeholder="Not içeriği... &#10;&#10;💡 İpuçları:&#10;• URL'ler otomatik algılanır&#10;• **kalın** *italik* için markdown&#10;• Her satıra bir link ekleyin"
-                value={editingNote ? editingNote.content : newNote.content}
-                onChange={(e) => editingNote ? setEditingNote({ ...editingNote, content: e.target.value }) : setNewNote({ ...newNote, content: e.target.value })}
-                className={'w-full px-4 py-4 mb-4 rounded-xl border-2 transition-all h-48 resize-none focus:outline-none focus:ring-4 focus:ring-indigo-500/20 ' + (darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-indigo-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500 focus:border-indigo-500')}
-              />
-              
-              <input
-                type="text"
-                placeholder="Etiketler (örn: #proje #önemli)"
-                value={editingNote ? editingNote.tags : newNote.tags}
-                onChange={(e) => editingNote ? setEditingNote({ ...editingNote, tags: e.target.value }) : setNewNote({ ...newNote, tags: e.target.value })}
-                className={'w-full px-4 py-3 mb-6 rounded-xl border-2 transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/20 ' + (darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-indigo-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500 focus:border-indigo-500')}
-              />
-              
-              <div className="flex gap-3">
-                <button onClick={() => { setIsAdding(false); setEditingNote(null); }} className={'flex-1 py-3 rounded-xl font-semibold transition-all hover:scale-105 active:scale-95 ' + (darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300')}>
-                  İptal
-                </button>
-                <button onClick={editingNote ? updateNote : addNote} className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all font-semibold shadow-lg hover:scale-105 active:scale-95">
-                  {editingNote ? 'Güncelle' : 'Kaydet'}
+                <button onClick={handleSubmit} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm">
+                  {isEditing ? 'Güncelle' : 'Ekle'}
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {filteredNotes.length === 0 ? (
-          <div className={'text-center py-20 ' + (darkMode ? 'text-gray-500' : 'text-gray-400')}>
-            <div className="text-6xl mb-4">📝</div>
-            <p className="text-xl font-medium">
-              {searchQuery ? 'Arama sonucu bulunamadı' : 'Henüz not yok. İlk notunu ekle!'}
-            </p>
+          {/* Liste Başlığı */}
+          <div className="max-w-7xl mx-auto mb-4 flex items-center gap-2">
+            <h2 className="text-2xl font-bold">
+              {activeTab === 'notes' && 'Notlarım'}
+              {activeTab === 'archive' && 'Arşiv'}
+              {activeTab === 'trash' && 'Çöp Kutusu'}
+            </h2>
+            <span className="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full text-sm">{filteredNotes.length}</span>
           </div>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredNotes.map(note => (
-              <NoteCard key={note.id} note={note} />
-            ))}
-          </div>
-        )}
 
-        {Object.keys(lockedNotes).length > 0 && (
-          <div className="mt-12">
-            <h3 className={'text-xl font-bold mb-6 flex items-center gap-2 ' + (darkMode ? 'text-white' : 'text-gray-900')}>
-              <Lock size={24} />
-              Kilitli Notlar ({Object.keys(lockedNotes).length})
-            </h3>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {notes.filter(n => lockedNotes[n.id]).map(note => (
-                <div key={note.id} className={'p-6 rounded-2xl border-2 border-dashed shadow-lg ' + (darkMode ? 'bg-gray-800 border-gray-700/50' : 'bg-white border-gray-200/50')}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={'p-3 rounded-xl ' + (darkMode ? 'bg-yellow-500/20' : 'bg-yellow-100')}>
-                      <Lock className={darkMode ? 'text-yellow-400' : 'text-yellow-600'} size={24} />
+          {/* Notlar Grid */}
+          {loading ? (
+            <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>
+          ) : filteredNotes.length === 0 ? (
+            <div className="text-center py-20 text-gray-400">
+              <div className="flex justify-center mb-4"><Filter size={48} /></div>
+              <p className="text-xl">Burada hiç not yok.</p>
+            </div>
+          ) : (
+            <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-3xl mx-auto"}>
+              {filteredNotes.map(note => {
+                const theme = COLORS.find(c => c.id === note.color) || COLORS[0];
+                return (
+                  <div key={note.id} className={`group relative rounded-xl border p-6 transition-all hover:shadow-xl ${theme.bg} ${theme.border} ${note.isPinned ? 'ring-2 ring-indigo-500' : ''}`}>
+                    {note.isPinned && <Pin size={16} className="absolute top-4 right-4 text-indigo-600 fill-current" />}
+                    
+                    <h3 className="font-bold text-lg mb-2">{note.title}</h3>
+                    <p className="text-sm whitespace-pre-wrap opacity-80 mb-4 line-clamp-6">{note.content}</p>
+                    
+                    <div className="flex justify-between items-center pt-4 border-t border-black/5 dark:border-white/5 mt-auto">
+                      <div className="text-xs opacity-60 flex flex-col">
+                        <span className="font-bold flex items-center gap-1"><User size={10}/> {note.author}</span>
+                        <span>{note.createdAt.toLocaleDateString('tr-TR')}</span>
+                      </div>
+                      
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {activeTab === 'trash' ? (
+                          <>
+                            <button onClick={() => updateStatus(note.id, 'isDeleted', false)} className="p-2 hover:bg-green-100 text-green-600 rounded" title="Geri Yükle"><RefreshCw size={16}/></button>
+                            <button onClick={() => permanentDelete(note.id)} className="p-2 hover:bg-red-100 text-red-600 rounded" title="Sil"><X size={16}/></button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => {navigator.clipboard.writeText(note.content); showToast('Kopyalandı')}} className="p-2 hover:bg-gray-200 rounded"><Copy size={16}/></button>
+                            {activeTab === 'notes' && (
+                              <>
+                                <button onClick={() => updateStatus(note.id, 'isPinned', !note.isPinned)} className="p-2 hover:bg-indigo-100 text-indigo-600 rounded"><Pin size={16}/></button>
+                                <button onClick={() => {setIsEditing(note.id); setForm({title: note.title, content: note.content, color: note.color}); document.getElementById('noteInput').focus(); window.scrollTo({top:0, behavior:'smooth'})}} className="p-2 hover:bg-blue-100 text-blue-600 rounded"><Edit2 size={16}/></button>
+                              </>
+                            )}
+                            <button onClick={() => updateStatus(note.id, 'isArchived', !note.isArchived)} className="p-2 hover:bg-orange-100 text-orange-600 rounded"><Archive size={16}/></button>
+                            <button onClick={() => updateStatus(note.id, 'isDeleted', true)} className="p-2 hover:bg-red-100 text-red-600 rounded"><Trash2 size={16}/></button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <button onClick={() => toggleLock(note.id)} className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl text-sm font-medium hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:scale-105 active:scale-95">
-                      Kilidi Aç
-                    </button>
                   </div>
-                  <p className={'text-sm mb-3 ' + (darkMode ? 'text-gray-400' : 'text-gray-600')}>
-                    Bu not şifreyle korunuyor
-                  </p>
-                  <div className={'text-xs flex items-center gap-2 ' + (darkMode ? 'text-gray-500' : 'text-gray-400')}>
-                    <div className={'w-1.5 h-1.5 rounded-full ' + (darkMode ? 'bg-gray-600' : 'bg-gray-300')} />
-                    {new Date(note.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
     </div>
   );
-};
-
-export default SmartNotebook;
+}
