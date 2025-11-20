@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Edit2, Check, Share2, 
   LayoutGrid, List, Loader2, Users, Pin, X, 
   Moon, Sun, Copy, Archive, RefreshCw, Menu, 
-  Filter, User, Download, LogOut, Lock, Unlock
+  Filter, User, Download, LogOut, Lock, Unlock, LogIn
 } from 'lucide-react';
 import { 
   collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, 
@@ -79,10 +79,12 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setRoomData(data);
+        // Şifre varsa ve daha önce kilidi açılmamışsa kilitle (User olsa bile)
         if (data.password && !sessionStorage.getItem(`unlocked_${roomId}`)) {
           setIsLocked(true);
         }
       } else {
+        // Oda yoksa ve kullanıcı giriş yapmışsa odayı oluştur
         if (user) {
           setDoc(roomRef, { admin: user.uid, password: null, createdAt: serverTimestamp() });
         }
@@ -90,6 +92,7 @@ export default function App() {
     });
 
     let unsubNotes = () => {};
+    // Eğer kilitli değilse notları getir
     if (!isLocked) {
       const q = query(collection(db, "notes"), where("room", "==", roomId), orderBy("createdAt", "desc"));
       unsubNotes = onSnapshot(q, (snapshot) => {
@@ -130,7 +133,7 @@ export default function App() {
   };
 
   const handleSubmit = async () => {
-    if (!user) return showToast("Önce giriş yapmalısın!", "error");
+    if (!user) return showToast("Not eklemek için giriş yapmalısın!", "error");
     if (!form.title.trim() && !form.content.trim()) return;
     
     try {
@@ -167,33 +170,16 @@ export default function App() {
     }
   };
 
-  // --- UI ---
-  if (!user) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-4">
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl rotate-3"><Lock className="text-white" size={40} /></div>
-          <h1 className="text-4xl font-bold mb-2">NoteMaster <span className="text-indigo-500">Pro</span></h1>
-          <p className="mb-8 text-gray-500">Güvenli, Şifreli ve Bulut Tabanlı Not Defteri.</p>
-          <button onClick={login} className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 py-3 px-6 rounded-xl font-bold flex items-center justify-center gap-3 hover:shadow-lg transition-all">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="G" />
-            Google ile Devam Et
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // --- UI: KİLİTLİ ODA EKRANI ---
   if (isLocked) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 p-4">
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 p-4 transition-colors">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl max-w-sm w-full border border-red-100 dark:border-red-900/30">
           <div className="flex justify-center mb-4"><div className="p-4 bg-red-100 dark:bg-red-900/20 rounded-full text-red-500"><Lock size={32}/></div></div>
           <h2 className="text-2xl font-bold text-center mb-2 dark:text-white">Oda Kilitli 🔒</h2>
-          <p className="text-center text-gray-500 mb-6">Bu odaya girmek için şifre gerekiyor.</p>
+          <p className="text-center text-gray-500 mb-6">İçeriği görmek için şifreyi girin.</p>
           <input type="password" placeholder="Şifre..." className="w-full p-3 rounded-xl border mb-4 dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} />
           <button onClick={unlockRoom} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700">Kilidi Aç</button>
-          <button onClick={() => signOut(auth)} className="w-full mt-2 text-gray-500 text-sm hover:underline">Çıkış Yap</button>
         </div>
       </div>
     );
@@ -214,23 +200,41 @@ export default function App() {
 
       <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
         <div className="p-6"><h1 className="text-2xl font-extrabold text-indigo-600 flex gap-2"><Edit2/> NoteMaster</h1></div>
-        <div className="px-4 mb-6"><button onClick={()=>{setActiveTab('notes'); setSidebarOpen(false); document.getElementById('titleInput')?.focus()}} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg shadow-indigo-500/20"><Plus/> Yeni Not</button></div>
+        
+        <div className="px-4 mb-6">
+          {user ? (
+            <button onClick={()=>{setActiveTab('notes'); setSidebarOpen(false); document.getElementById('titleInput')?.focus()}} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg shadow-indigo-500/20"><Plus/> Yeni Not</button>
+          ) : (
+            <button onClick={login} className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg"><LogIn size={18}/> Giriş Yap</button>
+          )}
+        </div>
+
         <nav className="flex-1 px-4 space-y-2">
           {[{id:'notes',icon:<List/>,label:'Notlar'},{id:'archive',icon:<Archive/>,label:'Arşiv'},{id:'trash',icon:<Trash2/>,label:'Çöp Kutusu'}].map(item=>(
             <button key={item.id} onClick={()=>{setActiveTab(item.id);setSidebarOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${activeTab===item.id?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600':'hover:bg-gray-100 dark:hover:bg-slate-800'}`}>{item.icon} {item.label}</button>
           ))}
         </nav>
+        
         <div className="p-4 border-t border-gray-200 dark:border-slate-800">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 mb-2">
-            <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full"/>
-            <div className="overflow-hidden"><p className="font-bold truncate text-sm">{user.displayName}</p><p className="text-xs text-green-500">● Çevrimiçi</p></div>
-          </div>
-          {roomData?.admin === user.uid && (
-            <button onClick={setRoomPassword} className="w-full mb-2 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-200">
-              {roomData.password ? <><Lock size={12}/> Şifreyi Değiştir</> : <><Unlock size={12}/> Şifre Koy</>}
-            </button>
+          {user ? (
+            <>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 mb-2">
+                <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full"/>
+                <div className="overflow-hidden"><p className="font-bold truncate text-sm">{user.displayName}</p><p className="text-xs text-green-500">● Çevrimiçi</p></div>
+              </div>
+              {roomData?.admin === user.uid && (
+                <button onClick={setRoomPassword} className="w-full mb-2 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-200">
+                  {roomData.password ? <><Lock size={12}/> Şifreyi Değiştir</> : <><Unlock size={12}/> Şifre Koy</>}
+                </button>
+              )}
+              <button onClick={()=>signOut(auth)} className="w-full flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 p-2 rounded-lg"><LogOut size={16}/> Çıkış Yap</button>
+            </>
+          ) : (
+             <div className="text-center text-gray-500 text-sm bg-gray-50 dark:bg-slate-800 p-3 rounded-xl">
+                <p>Misafir Modu 👀</p>
+                <p className="text-xs opacity-70">Düzenlemek için giriş yapın</p>
+             </div>
           )}
-          <button onClick={()=>signOut(auth)} className="w-full flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 p-2 rounded-lg"><LogOut size={16}/> Çıkış Yap</button>
         </div>
       </aside>
 
@@ -249,7 +253,8 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
-          {activeTab === 'notes' && (
+          {/* YENİ NOT ALANI - SADECE ÜYELERE GÖZÜKÜR */}
+          {user && activeTab === 'notes' && (
             <div className={`max-w-3xl mx-auto mb-10 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-gray-200 dark:border-slate-800 overflow-hidden transition-all ${isEditing?'ring-2 ring-indigo-500':''}`}>
               <input id="titleInput" type="text" placeholder="Başlık" className="w-full p-5 text-lg font-bold bg-transparent outline-none border-b border-gray-100 dark:border-slate-800" value={form.title} onChange={e=>setForm({...form, title: e.target.value})}/>
               <textarea placeholder="Bir not yaz..." className="w-full p-5 h-32 bg-transparent outline-none resize-none" value={form.content} onChange={e=>setForm({...form, content: e.target.value})}></textarea>
@@ -263,6 +268,14 @@ export default function App() {
                   <button onClick={handleSubmit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-indigo-700">{isEditing?'Güncelle':'Ekle'}</button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* MİSAFİR UYARISI */}
+          {!user && activeTab === 'notes' && (
+            <div className="max-w-3xl mx-auto mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl flex items-center justify-between">
+              <span className="text-blue-800 dark:text-blue-200 text-sm">👀 Notları izleme modundasınız. Düzenlemek için giriş yapın.</span>
+              <button onClick={login} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700">Giriş Yap</button>
             </div>
           )}
 
@@ -283,14 +296,21 @@ export default function App() {
                     <div className={`mt-auto pt-4 flex justify-between items-center ${viewMode==='list'?'w-auto flex-col border-l pl-4':'border-t border-black/5 dark:border-white/5'}`}>
                       <div className="text-xs opacity-60 flex flex-col gap-1"><span className="font-bold flex items-center gap-1"><User size={10}/> {note.author}</span><span>{note.createdAt?.toLocaleDateString()}</span></div>
                       <div className={`flex gap-1 ${viewMode==='grid'?'opacity-0 group-hover:opacity-100':''}`}>
-                        {activeTab === 'trash' ? (
-                          <><button onClick={()=>updateDoc(doc(db,"notes",note.id),{isDeleted:false})} className="p-2 hover:bg-green-100 text-green-600 rounded"><RefreshCw size={16}/></button><button onClick={()=>deleteDoc(doc(db,"notes",note.id))} className="p-2 hover:bg-red-100 text-red-600 rounded"><X size={16}/></button></>
-                        ) : (
+                        {/* HERKES GÖREBİLİR: İndir ve Kopyala */}
+                        <button onClick={()=>{const e=document.createElement("a");e.href=URL.createObjectURL(new Blob([`${note.title}\n${note.content}`],{type:'text/plain'}));e.download=`${note.title}.txt`;e.click()}} className="p-2 hover:bg-slate-200 rounded text-slate-500"><Download size={16}/></button>
+                        
+                        {/* SADECE ÜYELER */}
+                        {user && (
                           <>
-                            <button onClick={()=>{const e=document.createElement("a");e.href=URL.createObjectURL(new Blob([`${note.title}\n${note.content}`],{type:'text/plain'}));e.download=`${note.title}.txt`;e.click()}} className="p-2 hover:bg-slate-200 rounded text-slate-500"><Download size={16}/></button>
-                            {activeTab==='notes' && <><button onClick={()=>updateDoc(doc(db,"notes",note.id),{isPinned:!note.isPinned})} className="p-2 hover:bg-indigo-100 text-indigo-600 rounded"><Pin size={16}/></button><button onClick={()=>{setIsEditing(note.id);setForm({title:note.title,content:note.content,color:note.color,tags:note.tags.join(', ')});window.scrollTo(0,0)}} className="p-2 hover:bg-blue-100 text-blue-600 rounded"><Edit2 size={16}/></button></>}
-                            <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isArchived:!note.isArchived})} className="p-2 hover:bg-orange-100 text-orange-600 rounded"><Archive size={16}/></button>
-                            <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isDeleted:true})} className="p-2 hover:bg-red-100 text-red-600 rounded"><Trash2 size={16}/></button>
+                            {activeTab === 'trash' ? (
+                              <><button onClick={()=>updateDoc(doc(db,"notes",note.id),{isDeleted:false})} className="p-2 hover:bg-green-100 text-green-600 rounded"><RefreshCw size={16}/></button><button onClick={()=>deleteDoc(doc(db,"notes",note.id))} className="p-2 hover:bg-red-100 text-red-600 rounded"><X size={16}/></button></>
+                            ) : (
+                              <>
+                                {activeTab==='notes' && <><button onClick={()=>updateDoc(doc(db,"notes",note.id),{isPinned:!note.isPinned})} className="p-2 hover:bg-indigo-100 text-indigo-600 rounded"><Pin size={16}/></button><button onClick={()=>{setIsEditing(note.id);setForm({title:note.title,content:note.content,color:note.color,tags:note.tags.join(', ')});window.scrollTo(0,0)}} className="p-2 hover:bg-blue-100 text-blue-600 rounded"><Edit2 size={16}/></button></>}
+                                <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isArchived:!note.isArchived})} className="p-2 hover:bg-orange-100 text-orange-600 rounded"><Archive size={16}/></button>
+                                <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isDeleted:true})} className="p-2 hover:bg-red-100 text-red-600 rounded"><Trash2 size={16}/></button>
+                              </>
+                            )}
                           </>
                         )}
                       </div>
