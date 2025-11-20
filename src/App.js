@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Edit2, Check, Share2, 
   LayoutGrid, List, Loader2, Users, Pin, X, 
   Moon, Sun, Copy, Archive, RefreshCw, Menu, 
-  Filter, User, Download, LogOut, Lock, Unlock, LogIn, FileText, Home
+  Filter, User, Download, LogOut, Lock, Unlock, LogIn, FileText, Home, ExternalLink
 } from 'lucide-react';
 import { 
   collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, 
@@ -52,7 +52,7 @@ export default function App() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('grid'); 
-  const [activeTab, setActiveTab] = useState('notes'); // notes | my_notes | archive | trash
+  const [activeTab, setActiveTab] = useState('notes'); 
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -69,9 +69,7 @@ export default function App() {
     return () => unsubAuth();
   }, [darkMode]);
 
-  // --- DATA FETCHING ---
   useEffect(() => {
-    // 1. ODA VERİSİ (Şifre kontrolü)
     const roomRef = doc(db, "rooms", roomId);
     const unsubRoom = onSnapshot(roomRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -87,28 +85,22 @@ export default function App() {
       }
     });
 
-    // 2. NOT VERİSİ (Query Değişkenliği)
     let q;
-
-    // Eğer "Notlarım" sekmesindeysek ve giriş yapmışsak -> Odaya bakma, User ID'ye bak
     if (activeTab === 'my_notes' && user) {
+      // KİŞİSEL NOTLAR: Sadece benim yazdıklarım (Hangi odada olursa olsun)
       q = query(collection(db, "notes"), where("authorId", "==", user.uid), orderBy("createdAt", "desc"));
     } else {
-      // Diğer durumlarda (Notlar, Arşiv, Çöp) -> Odaya göre filtrele
+      // ODA NOTLARI: Bu odadaki herkesin notları
       q = query(collection(db, "notes"), where("room", "==", roomId), orderBy("createdAt", "desc"));
     }
 
     const unsubNotes = onSnapshot(q, (snapshot) => {
       setNotes(snapshot.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate() || new Date() })));
       setLoading(false);
-    }, (err) => { 
-      console.log("Firebase Hatası:", err);
-      // Eğer "Index" hatası verirse konsola link basar
-      setLoading(false); 
-    });
+    }, (err) => { console.log(err); setLoading(false); });
 
     return () => { unsubRoom(); unsubNotes(); };
-  }, [roomId, isLocked, user, activeTab]); // activeTab değişince sorgu da değişir
+  }, [roomId, isLocked, user, activeTab]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ show: true, message: msg, type });
@@ -137,11 +129,8 @@ export default function App() {
     }
   };
 
-  // Kişisel Odaya Git Fonksiyonu
   const goToPersonalRoom = () => {
-    if (user) {
-      window.location.href = `?room=${user.uid}`;
-    }
+    if (user) window.location.href = `?room=${user.uid}`;
   };
 
   const handleSubmit = async () => {
@@ -184,7 +173,7 @@ export default function App() {
 
   if (isLocked) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 p-4 transition-colors">
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl max-w-sm w-full border border-red-100 dark:border-red-900/30">
           <div className="flex justify-center mb-4"><div className="p-4 bg-red-100 dark:bg-red-900/20 rounded-full text-red-500"><Lock size={32}/></div></div>
           <h2 className="text-2xl font-bold text-center mb-2 dark:text-white">Oda Kilitli 🔒</h2>
@@ -195,14 +184,10 @@ export default function App() {
     );
   }
 
-  // Filtreleme Mantığı
   const filteredNotes = notes.filter(n => {
-    // 1. Arama Filtresi
     const match = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase()) || (n.tags && n.tags.some(t => t.includes(searchTerm.toLowerCase())));
     if (!match) return false;
-
-    // 2. Sekme Filtresi
-    if (activeTab === 'my_notes') return true; // "Notlarım" sekmesindeysek hepsini göster (sorgu zaten filtreli geliyor)
+    if (activeTab === 'my_notes') return true; 
     if (activeTab === 'trash') return n.isDeleted;
     if (n.isDeleted) return false;
     if (activeTab === 'archive') return n.isArchived;
@@ -223,10 +208,13 @@ export default function App() {
                 <span className="font-bold flex items-center gap-1"><User size={14}/> {selectedNote.author}</span>
                 <span>•</span>
                 <span>{selectedNote.createdAt?.toLocaleDateString()}</span>
+                {/* Odaya gitme linki (Sadece Tüm Notlar modunda) */}
+                {activeTab === 'my_notes' && selectedNote.room && (
+                   <a href={`?room=${selectedNote.room}`} className="flex items-center gap-1 text-blue-500 hover:underline ml-2"><ExternalLink size={12}/> Odaya Git</a>
+                )}
               </div>
             </div>
             <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap text-lg leading-relaxed text-slate-700 dark:text-slate-300">{formatContent(selectedNote.content)}</div>
-            {selectedNote.tags && selectedNote.tags.length > 0 && <div className="flex flex-wrap gap-2 mt-8 pt-6 border-t border-black/5 dark:border-white/5">{selectedNote.tags.map((t, i) => <span key={i} className="px-3 py-1 bg-black/5 dark:bg-white/10 rounded-lg text-sm font-medium">#{t}</span>)}</div>}
             <div className="flex justify-end gap-2 mt-6 pt-4">
                <button onClick={() => {navigator.clipboard.writeText(selectedNote.content); showToast('Kopyalandı')}} className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl font-medium hover:bg-slate-200"><Copy size={18}/> Kopyala</button>
                {user && !selectedNote.isDeleted && (
@@ -239,7 +227,6 @@ export default function App() {
 
       <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
         <div className="p-6"><h1 className="text-2xl font-extrabold text-indigo-600 flex gap-2"><Edit2/> NoteMaster</h1></div>
-        
         <div className="px-4 mb-4">
           {user ? (
             <button onClick={()=>{setActiveTab('notes'); setSidebarOpen(false); document.getElementById('titleInput')?.focus()}} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg shadow-indigo-500/20"><Plus/> Yeni Not</button>
@@ -247,31 +234,21 @@ export default function App() {
             <button onClick={login} className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3 rounded-xl font-bold flex justify-center gap-2 shadow-lg"><LogIn size={18}/> Giriş Yap</button>
           )}
         </div>
-
-        <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
-          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4 px-2">Menu</div>
-          
-          {/* ANA MENÜLER */}
+        <nav className="flex-1 px-4 space-y-2">
           {[
-            {id:'notes', icon:<List/>, label:'Oda Notları'}, // Mevcut Odadaki Notlar
-            {id:'my_notes', icon:<FileText/>, label:'Tüm Notlarım'}, // 🔥 YENİ: User ID'ye göre notlar
+            {id:'notes', icon:<List/>, label:'Oda Notları'},
+            {id:'my_notes', icon:<FileText/>, label:'Tüm Notlarım'},
             {id:'archive', icon:<Archive/>, label:'Arşiv'},
             {id:'trash', icon:<Trash2/>, label:'Çöp Kutusu'}
           ].map(item=>(
-             // Notlarım sekmesini sadece giriş yapmışsa göster
              (item.id === 'my_notes' && !user) ? null : 
              <button key={item.id} onClick={()=>{setActiveTab(item.id);setSidebarOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${activeTab===item.id?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600':'hover:bg-gray-100 dark:hover:bg-slate-800'}`}>{item.icon} {item.label}</button>
           ))}
         </nav>
-        
         <div className="p-4 border-t border-gray-200 dark:border-slate-800">
           {user ? (
             <>
-              {/* KİŞİSEL ODA BUTONU */}
-              <button onClick={goToPersonalRoom} className="w-full mb-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-blue-100 border border-blue-200 dark:border-blue-800" title="Sadece bana ait, sabit oda">
-                <Home size={14}/> Kişisel Odam'a Git
-              </button>
-
+              <button onClick={goToPersonalRoom} className="w-full mb-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-blue-100 border border-blue-200 dark:border-blue-800"><Home size={14}/> Kişisel Odam</button>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 mb-2">
                 <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full"/>
                 <div className="overflow-hidden"><p className="font-bold truncate text-sm">{user.displayName}</p><p className="text-xs text-green-500">● Çevrimiçi</p></div>
@@ -304,8 +281,11 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
-          {user && activeTab === 'notes' && (
-            <div className={`max-w-3xl mx-auto mb-10 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-gray-200 dark:border-slate-800 overflow-hidden transition-all ${isEditing?'ring-2 ring-indigo-500':''}`}>
+          {/* FORM ALANI: Hem Oda Notlarında hem de 'Düzenleme Modunda' görünür */}
+          {user && (activeTab === 'notes' || isEditing) && (
+            <div className={`max-w-3xl mx-auto mb-10 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-gray-200 dark:border-slate-800 overflow-hidden transition-all ${isEditing?'ring-2 ring-indigo-500 sticky top-0 z-30 shadow-2xl':''}`}>
+               {/* Eğer düzenleme modundaysak ve Tüm Notlar sekmesindeysek uyarı göster */}
+               {isEditing && activeTab === 'my_notes' && <div className="bg-indigo-100 text-indigo-700 text-xs p-2 text-center font-bold">Şu an bir notu düzenliyorsunuz</div>}
               <input id="titleInput" type="text" placeholder="Başlık" className="w-full p-5 text-lg font-bold bg-transparent outline-none border-b border-gray-100 dark:border-slate-800" value={form.title} onChange={e=>setForm({...form, title: e.target.value})}/>
               <textarea placeholder="Bir not yaz..." className="w-full p-5 h-32 bg-transparent outline-none resize-none" value={form.content} onChange={e=>setForm({...form, content: e.target.value})}></textarea>
               <input type="text" placeholder="#etiket1, #etiket2" className="w-full px-5 py-2 text-sm bg-transparent outline-none text-gray-500" value={form.tags} onChange={e=>setForm({...form, tags: e.target.value})}/>
@@ -317,11 +297,8 @@ export default function App() {
           )}
 
           <div className="max-w-7xl mx-auto mb-6 flex items-center gap-3">
-            <h2 className="text-3xl font-bold">
-              {activeTab==='notes'?'Oda Notları':activeTab==='my_notes'?'Tüm Notlarım':activeTab==='archive'?'Arşiv':'Çöp Kutusu'}
-            </h2>
-            <span className="text-sm bg-gray-200 dark:bg-slate-800 px-3 py-1 rounded-full">{filteredNotes.length}</span>
-            {activeTab === 'my_notes' && <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded ml-2">Tüm odalardan toplandı</span>}
+             <h2 className="text-3xl font-bold">{activeTab==='notes'?'Oda Notları':activeTab==='my_notes'?'Tüm Notlarım':activeTab==='archive'?'Arşiv':'Çöp Kutusu'}</h2>
+             <span className="text-sm bg-gray-200 dark:bg-slate-800 px-3 py-1 rounded-full">{filteredNotes.length}</span>
           </div>
           
           {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" size={40}/></div> : filteredNotes.length === 0 ? <div className="text-center py-20 opacity-50"><p className="text-xl">Burada hiç not yok.</p></div> : (
@@ -346,7 +323,8 @@ export default function App() {
                               <><button onClick={()=>updateDoc(doc(db,"notes",note.id),{isDeleted:false})} className="p-2 hover:bg-green-100 text-green-600 rounded"><RefreshCw size={16}/></button><button onClick={()=>deleteDoc(doc(db,"notes",note.id))} className="p-2 hover:bg-red-100 text-red-600 rounded"><X size={16}/></button></>
                             ) : (
                               <>
-                                {activeTab==='notes' && <><button onClick={()=>updateDoc(doc(db,"notes",note.id),{isPinned:!note.isPinned})} className="p-2 hover:bg-indigo-100 text-indigo-600 rounded"><Pin size={16}/></button><button onClick={()=>{setIsEditing(note.id);setForm({title:note.title,content:note.content,color:note.color,tags:note.tags.join(', ')});window.scrollTo(0,0)}} className="p-2 hover:bg-blue-100 text-blue-600 rounded"><Edit2 size={16}/></button></>}
+                                <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isPinned:!note.isPinned})} className={`p-2 rounded ${note.isPinned?'text-indigo-600 bg-indigo-100':'hover:bg-slate-200 text-slate-500'}`}><Pin size={16}/></button>
+                                <button onClick={()=>{setIsEditing(note.id);setForm({title:note.title,content:note.content,color:note.color,tags:note.tags.join(', ')});window.scrollTo(0,0)}} className="p-2 hover:bg-blue-100 text-blue-600 rounded"><Edit2 size={16}/></button>
                                 <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isArchived:!note.isArchived})} className="p-2 hover:bg-orange-100 text-orange-600 rounded"><Archive size={16}/></button>
                                 <button onClick={()=>updateDoc(doc(db,"notes",note.id),{isDeleted:true})} className="p-2 hover:bg-red-100 text-red-600 rounded"><Trash2 size={16}/></button>
                               </>
